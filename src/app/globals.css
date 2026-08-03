@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-black text-white antialiased;
+  font-family: var(--font-sans), sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button {
+  @apply cursor-pointer;
+}
+
+img,
+svg,
+video,
+canvas {
+  @apply block max-w-full;
+}
