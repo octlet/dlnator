@@ -31,3 +31,24 @@ video,
 canvas {
   @apply block max-w-full;
 }
+
+.plyr {
+  --plyr-color-main: #ffffff;
+  --plyr-video-background: #000000;
+  --plyr-video-control-color-hover: #000000;
+  --plyr-audio-controls-background: transparent;
+  --plyr-audio-control-color: #ffffff;
+  --plyr-audio-control-color-hover: #000000;
+  --plyr-menu-background: #000000;
+  --plyr-menu-color: #ffffff;
+  --plyr-tooltip-background: #000000;
+  --plyr-tooltip-color: #ffffff;
+  border-radius: 0.75rem;
+}
+
+/* the big center play button always uses a white background (tied to
+   --plyr-color-main above), so its icon needs to stay dark regardless
+   of the white-on-dark icon color the rest of the controls use */
+.plyr__control--overlaid {
+  color: #000000;
+}

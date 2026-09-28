@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@ui/Button";
+import { FORMATS, getFormatLabel } from "../../../helpers/format";
 
 function shortError(msg) {
   if (!msg) return "failed";
@@ -9,37 +10,66 @@ function shortError(msg) {
   return oneLine.length > 120 ? `${oneLine.slice(0, 120)}...` : oneLine;
 }
 
+function parseUrls(value) {
+  return value
+    .split(/[\n,]/)
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
 export default function QuickAdd() {
-  const [url, setUrl] = useState("");
+  const [input, setInput] = useState("");
+  const [format, setFormat] = useState(FORMATS[0]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
 
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.settings?.defaultFormat) setFormat(data.settings.defaultFormat);
+      })
+      .catch(() => {});
+  }, []);
+
   async function handleSubmit() {
-    if (!url.trim()) return;
+    const urls = parseUrls(input);
+    if (!urls.length) return;
 
     setLoading(true);
     setStatus("");
 
-    try {
-      const res = await fetch("/api/ingest", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url }),
-      });
+    let queued = 0;
+    let failed = 0;
+    let lastError = "";
 
-      const data = await res.json();
+    for (const url of urls) {
+      try {
+        const res = await fetch("/api/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, mode: format }),
+        });
 
-      if (res.ok) {
-        setUrl("");
-        setStatus(data?.duplicate ? "already exists" : "added");
-      } else {
-        setStatus(shortError(data?.error));
+        const data = await res.json();
+
+        if (res.ok) {
+          queued += data?.count || 1;
+        } else {
+          failed++;
+          lastError = data?.error;
+        }
+      } catch {
+        failed++;
       }
-    } catch {
-      setStatus("error");
     }
+
+    setInput("");
+    setStatus(
+      failed
+        ? `queued ${queued}, ${failed} failed${lastError ? `: ${shortError(lastError)}` : ""}`
+        : `queued ${queued}`,
+    );
 
     setLoading(false);
   }
@@ -49,18 +79,30 @@ export default function QuickAdd() {
       <div>
         <p className="text-sm text-white">quick add</p>
         <p className="mt-1 text-sm text-white/45">
-          paste a source to create a job
+          paste one or more urls, or a playlist link, one per line
         </p>
       </div>
 
       <div className="mt-6 flex flex-col gap-3">
-        <input
-          type="text"
+        <textarea
+          rows={3}
           placeholder="https://..."
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           className="rounded-xl border border-white/8 bg-transparent px-4 py-3 text-sm text-white outline-none placeholder:text-white/25"
         />
+
+        <select
+          value={format}
+          onChange={(e) => setFormat(e.target.value)}
+          className="rounded-xl border border-white/8 bg-transparent px-4 py-3 text-sm text-white outline-none"
+        >
+          {FORMATS.map((f) => (
+            <option key={f} value={f} className="bg-black">
+              {getFormatLabel(f)}
+            </option>
+          ))}
+        </select>
 
         <Button
           variant="primary"
@@ -68,7 +110,7 @@ export default function QuickAdd() {
           onClick={handleSubmit}
           disabled={loading}
         >
-          {loading ? "adding..." : "probe url"}
+          {loading ? "adding..." : "add and download"}
         </Button>
 
         {status && <p className="font-mono text-xs text-white/35">{status}</p>}

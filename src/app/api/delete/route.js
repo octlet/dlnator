@@ -1,35 +1,6 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import { getJobById, deleteJob } from "../../../helpers/jobs";
-
-function safeDelete(filePath) {
-  if (!filePath) return;
-
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch {}
-}
-
-function deleteSidecarFiles(filePath) {
-  if (!filePath) return;
-
-  const dir = path.dirname(filePath);
-  const ext = path.extname(filePath);
-  const base = path.basename(filePath, ext);
-
-  const candidates = [
-    path.join(dir, `${base}.info.json`),
-    path.join(dir, `${base}.jpg`),
-    path.join(dir, `${base}.jpeg`),
-    path.join(dir, `${base}.png`),
-    path.join(dir, `${base}.webp`),
-  ];
-
-  candidates.forEach(safeDelete);
-}
+import { deleteJobFiles } from "../../../helpers/library";
 
 export async function POST(req) {
   try {
@@ -40,20 +11,14 @@ export async function POST(req) {
       return NextResponse.json({ error: "jobId is required" }, { status: 400 });
     }
 
-    const job = getJobById(jobId);
+    const job = await getJobById(jobId);
 
     if (!job) {
       return NextResponse.json({ error: "job not found" }, { status: 404 });
     }
 
-    if (Array.isArray(job.files)) {
-      for (const file of job.files) {
-        safeDelete(file.path);
-        deleteSidecarFiles(file.path);
-      }
-    }
-
-    deleteJob(jobId);
+    deleteJobFiles(job);
+    await deleteJob(jobId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

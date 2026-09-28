@@ -1,132 +1,96 @@
-import fs from "fs";
-import path from "path";
+import { prisma } from "./prisma";
 
-const filePath = path.join(process.cwd(), "data", "jobs.json");
+const withFiles = { files: true };
 
-function ensureFile() {
-  const dir = path.dirname(filePath);
+// a job stuck in "downloading" past this age likely belongs to a process
+// that crashed or restarted mid-download, so treat it as failed
+const STUCK_JOB_TIMEOUT_MS = 60 * 60 * 1000;
 
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+export async function reapStuckJobs() {
+  const cutoff = new Date(Date.now() - STUCK_JOB_TIMEOUT_MS);
 
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, "[]", "utf-8");
-  }
-}
-
-function readJobs() {
-  ensureFile();
-
-  try {
-    const data = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(data || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function writeJobs(jobs) {
-  ensureFile();
-  fs.writeFileSync(filePath, JSON.stringify(jobs, null, 2), "utf-8");
+  return prisma.job.updateMany({
+    where: { status: "downloading", updatedAt: { lt: cutoff } },
+    data: { status: "failed", error: "download timed out" },
+  });
 }
 
 export function getAllJobs() {
-  return readJobs().sort((a, b) => b.id - a.id);
+  return prisma.job.findMany({ include: withFiles, orderBy: { id: "desc" } });
 }
 
 export function getJobById(id) {
-  return readJobs().find((job) => job.id === id) || null;
+  return prisma.job.findUnique({ where: { id }, include: withFiles });
 }
 
 export function findJobBySourceKey(sourceKey) {
   if (!sourceKey) return null;
-  return readJobs().find((job) => job.source_key === sourceKey) || null;
+  return prisma.job.findUnique({ where: { sourceKey }, include: withFiles });
 }
 
-export function createJob({ url, canonicalUrl, sourceKey }) {
-  const jobs = readJobs();
-
-  const newJob = {
-    id: Date.now(),
-
-    url,
-    canonical_url: canonicalUrl || url,
-    source_key: sourceKey || null,
-
-    title: null,
-    extractor: null,
-    uploader: null,
-    duration: null,
-    thumbnail: null,
-    webpage_url: null,
-
-    files: [],
-
-    downloaded: false,
-    status: "metadata",
-    error: null,
-
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  jobs.push(newJob);
-  writeJobs(jobs);
-
-  return newJob;
+export function getJobsByStatus(status) {
+  return prisma.job.findMany({ where: { status }, include: withFiles });
 }
 
-export function updateJob(id, updates) {
-  const jobs = readJobs();
-
-  const index = jobs.findIndex((job) => job.id === id);
-  if (index === -1) return null;
-
-  jobs[index] = {
-    ...jobs[index],
-    ...updates,
-    updated_at: new Date().toISOString(),
-  };
-
-  writeJobs(jobs);
-
-  return jobs[index];
+export async function getKnownFilePaths() {
+  const files = await prisma.file.findMany({ select: { path: true } });
+  return new Set(files.map((f) => f.path));
 }
 
-export function deleteJob(id) {
-  const jobs = readJobs().filter((job) => job.id !== id);
-  writeJobs(jobs);
+export async function createJob({ url, canonicalUrl, sourceKey }) {
+  try {
+    return await prisma.job.create({
+      data: {
+        url,
+        canonicalUrl: canonicalUrl || url,
+        sourceKey: sourceKey || null,
+      },
+      include: withFiles,
+    });
+  } catch (error) {
+    if (error.code === "P2002" && sourceKey) {
+      const existing = await findJobBySourceKey(sourceKey);
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
-export function addFileToJob(jobId, file) {
-  const jobs = readJobs();
+export async function updateJob(id, updates) {
+  try {
+    return await prisma.job.update({
+      where: { id },
+      data: updates,
+      include: withFiles,
+    });
+  } catch {
+    return null;
+  }
+}
 
-  const index = jobs.findIndex((job) => job.id === jobId);
-  if (index === -1) return null;
+export async function deleteJob(id) {
+  try {
+    await prisma.job.delete({ where: { id } });
+  } catch {
+    // job already gone
+  }
+}
 
-  const job = jobs[index];
-  const files = Array.isArray(job.files) ? job.files : [];
+export function deleteJobsByStatus(status) {
+  return prisma.job.deleteMany({ where: { status } });
+}
 
-  const exists = files.some((f) => f.mode === file.mode);
-  if (exists) return job;
-
-  jobs[index] = {
-    ...job,
-    files: [
-      ...files,
-      {
+export async function addFileToJob(jobId, file) {
+  await prisma.file
+    .create({
+      data: {
+        jobId,
         mode: file.mode,
         path: file.path,
-        media_kind: file.media_kind,
-        created_at: file.created_at || new Date().toISOString(),
+        mediaKind: file.mediaKind,
       },
-    ],
-    downloaded: true,
-    updated_at: new Date().toISOString(),
-  };
+    })
+    .catch(() => {});
 
-  writeJobs(jobs);
-
-  return jobs[index];
+  return getJobById(jobId);
 }

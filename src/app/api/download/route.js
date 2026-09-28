@@ -12,7 +12,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "jobId is required" }, { status: 400 });
     }
 
-    const job = getJobById(jobId);
+    const job = await getJobById(jobId);
 
     if (!job) {
       return NextResponse.json({ error: "job not found" }, { status: 404 });
@@ -36,12 +36,12 @@ export async function POST(req) {
       );
     }
 
-    updateJob(jobId, {
+    await updateJob(jobId, {
       status: "downloading",
       error: null,
     });
 
-    processDownload(jobId, job.canonical_url || job.url, mode);
+    processDownload(jobId, job.canonicalUrl || job.url, mode);
 
     return NextResponse.json({ success: true });
   } catch {

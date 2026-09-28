@@ -4,17 +4,28 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatDuration } from "../../../helpers/format";
 import { useJobs, refetchJobs } from "../../../helpers/useJobs";
+import { matchesQuery } from "../../../helpers/jobSearch";
 import Button from "@ui/Button";
 import EmptyState from "@ui/EmptyState";
+
+const STATUSES = ["all", "metadata", "queued", "downloading", "completed", "failed"];
 
 function hasMode(job, mode) {
   return (job.files || []).some((file) => file.mode === mode);
 }
 
 export default function DownloadsList() {
-  const jobs = useJobs();
+  const allJobs = useJobs();
   const [loadingId, setLoadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const jobs = allJobs.filter(
+    (job) =>
+      matchesQuery(job, query) &&
+      (statusFilter === "all" || job.status === statusFilter),
+  );
 
   async function handleDownload(jobId, mode) {
     setLoadingId(`${jobId}-${mode}`);
@@ -56,12 +67,38 @@ export default function DownloadsList() {
           </p>
         </div>
 
-        <p className="font-mono text-xs text-white/25">{jobs.length} total</p>
+        <p className="font-mono text-xs text-white/25">
+          {jobs.length} of {allJobs.length}
+        </p>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        <input
+          type="text"
+          placeholder="search title or url"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="min-w-0 flex-1 rounded-xl border border-white/8 bg-transparent px-4 py-2 text-sm text-white outline-none placeholder:text-white/25"
+        />
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="rounded-xl border border-white/8 bg-transparent px-4 py-2 text-sm text-white outline-none"
+        >
+          {STATUSES.map((status) => (
+            <option key={status} value={status} className="bg-black">
+              {status}
+            </option>
+          ))}
+        </select>
       </div>
 
       {jobs.length === 0 ? (
         <div className="mt-6">
-          <EmptyState>no jobs yet</EmptyState>
+          <EmptyState>
+            {allJobs.length === 0 ? "no jobs yet" : "no jobs match your filters"}
+          </EmptyState>
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-4">

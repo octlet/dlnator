@@ -7,10 +7,16 @@ let subscribers = new Set();
 let intervalId = null;
 
 async function fetchJobs() {
-  const res = await fetch("/api/jobs");
-  const data = await res.json();
-  jobsCache = data.jobs || [];
-  subscribers.forEach((fn) => fn(jobsCache));
+  try {
+    const res = await fetch("/api/jobs");
+    if (!res.ok) return;
+
+    const data = await res.json();
+    jobsCache = Array.isArray(data.jobs) ? data.jobs : jobsCache;
+    subscribers.forEach((fn) => fn(jobsCache));
+  } catch {
+    // keep the last known state, next poll will retry
+  }
 }
 
 export function useJobs() {

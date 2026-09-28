@@ -1,0 +1,7 @@
+node_modules
+.next
+library
+src/generated
+.git
+.env*
+npm-debug.log*

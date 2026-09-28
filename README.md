@@ -1,18 +1,27 @@
 # dlnator
 
-a self-hosted tool to pull video/audio from youtube (and anything yt-dlp supports), store it locally, and watch or listen to it through a simple web ui.
+self-hosted yt-dlp downloader with a web ui: paste a url, download it as mp4/mp3/m4a, stream it back in-browser. postgres-backed, docker-first.
 
-## what it does
+<table>
+<tr>
+<td align="center"><img src=".github/screenshots/dashboard.png" width="280"><br><sub>dashboard</sub></td>
+<td align="center"><img src=".github/screenshots/library.png" width="280"><br><sub>library</sub></td>
+<td align="center"><img src=".github/screenshots/watch.png" width="280"><br><sub>watch</sub></td>
+</tr>
+<tr>
+<td align="center"><img src=".github/screenshots/downloads.png" width="280"><br><sub>downloads</sub></td>
+<td align="center"><img src=".github/screenshots/settings.png" width="280"><br><sub>settings</sub></td>
+<td></td>
+</tr>
+</table>
 
-- paste a url, it fetches metadata (title, uploader, duration, thumbnail)
-- download as mp4, mp3, or m4a
-- stream downloads back through the browser — no re-download needed
-- track everything in a dashboard: total jobs, in-progress, completed
-- browse finished downloads in a library grid
+## features
 
-## requirements
-
-- docker + docker compose
+- any source yt-dlp supports, not just youtube
+- mp4 / mp3 / m4a, playlists and bulk paste
+- stream straight from the library, no re-download
+- rescan or import an existing folder of media
+- optional single-password auth for exposing it beyond localhost
 
 ## running it
 
@@ -20,38 +29,40 @@ a self-hosted tool to pull video/audio from youtube (and anything yt-dlp support
 docker compose up -d
 ```
 
-app comes up on `http://localhost:3000` (or whatever port you set in `docker-compose.yml`). data — `jobs.json` and all downloaded media — is stored in `./data`, which persists across restarts and rebuilds.
+app's on `http://localhost:3000`, reachable on your lan too. postgres and `./library` both persist across restarts/rebuilds.
 
-by default the container binds to all interfaces, so it's also reachable from other devices on your network at `http://<your-machine-ip>:3000` (useful for phones/tablets). there's no authentication, so only do this on a network you trust.
+for a shared password, drop an `.env` next to `docker-compose.yml`:
 
-## usage
+```bash
+echo "AUTH_PASSWORD=your-password-here" > .env
+docker compose up -d
+```
 
-1. **dashboard** — paste a url under "quick add" to create a job
-2. **downloads** — pick a format (mp4 / mp3 / m4a) to start downloading; download multiple formats of the same source if you want
-3. **watch** — once a format finishes, open it to stream in-browser
-4. **library** — grid view of everything fully downloaded
+unset it to leave the instance open.
+
+### importing an existing library
+
+settings → import folder indexes media from any folder without moving it. that folder has to be mounted into the container:
+
+```yaml
+  dlnator:
+    volumes:
+      - ./library:/app/library
+      - /path/to/old/downloads:/app/import:ro
+```
+
+then point the import box at `/app/import`. it stays indexed in place, so keep the mount around.
 
 ## notes
 
-- supports any source yt-dlp supports, not just youtube
-- re-adding the same url won't create a duplicate job — it reuses the existing one
-- deleting a job removes its files from disk, not just the entry
-- jobs are currently stored in a flat `jobs.json` file — fine for personal use, not built for heavy concurrent use yet (see planned)
+- re-adding a url reuses the existing job instead of duplicating it
+- deleting a job deletes its files too
+- retry a failed download by clicking its format button again
 
-## planned
+## roadmap
 
-- migrate job storage from `jobs.json` to a proper database (better concurrency, no race conditions on simultaneous writes)
-- search/filter on downloads and library pages
-- playlist and batch url support
-- subtitle download
-- working settings (default format, rescan library, clear failed jobs)
-- job retry on failure
-- authentication
+- subtitle downloads
 
 ## contributing
 
-this is an early, personal-use tool and there's plenty of room to improve it. issues and pull requests are welcome — whether it's a bug fix, a planned feature above, or something not listed here.
-
-## a note on how this was built
-
-this project is hand-designed and hand-reviewed, not vibe-coded — every change was deliberate and checked, not just accepted from a prompt. ai assistance was used along the way (mainly for code review, cleanup, and drafting), but the architecture, decisions, and final code are owned and understood, not blindly generated.
+PRs welcome — bug fixes, roadmap items, or anything else you think belongs here.

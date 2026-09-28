@@ -1,97 +1,11 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
-import { getLibraryRoot, getOutputTemplate } from "./paths";
+import { getOutputTemplate } from "./paths";
 
-function extractVideoId(url) {
-  if (!url) return null;
-
-  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{6,})/);
-  if (watchMatch) return watchMatch[1];
-
-  const shortsMatch = url.match(/\/shorts\/([a-zA-Z0-9_-]{6,})/);
-  if (shortsMatch) return shortsMatch[1];
-
-  const youtuBeMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]{6,})/);
-  if (youtuBeMatch) return youtuBeMatch[1];
-
-  return null;
-}
-
-function getExpectedExtensionsForMode(mode) {
-  if (mode === "video-mp4") return [".mp4"];
-  if (mode === "audio-mp3") return [".mp3"];
-  if (mode === "audio-m4a") return [".m4a"];
-  return [".mp4", ".mp3", ".m4a"];
-}
-
-function collectMatches(extensions, filterFn) {
-  const libraryRoot = getLibraryRoot();
-  if (!fs.existsSync(libraryRoot)) return [];
-
-  const matches = [];
-
-  function walk(dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        walk(fullPath);
-        continue;
-      }
-
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!extensions.includes(ext)) continue;
-
-      const stat = fs.statSync(fullPath);
-      if (filterFn(entry, stat)) {
-        matches.push({ path: fullPath, mtime: stat.mtimeMs });
-      }
-    }
-  }
-
-  walk(libraryRoot);
-  return matches;
-}
-
-function findLatestDownloadedFile(mode, startedAt) {
-  const expectedExtensions = getExpectedExtensionsForMode(mode);
-
-  const matches = collectMatches(
-    expectedExtensions,
-    (entry, stat) => stat.mtimeMs >= startedAt - 3000,
-  );
-
-  if (!matches.length) return null;
-
-  matches.sort((a, b) => b.mtime - a.mtime);
-  return matches[0].path;
-}
-
-function findDownloadedFile(url, mode, startedAt) {
-  const videoId = extractVideoId(url);
-
-  if (videoId) {
-    const expectedExtensions = getExpectedExtensionsForMode(mode);
-
-    const matches = collectMatches(expectedExtensions, (entry) =>
-      entry.name.includes(`[${videoId}]`),
-    );
-
-    if (matches.length) {
-      matches.sort((a, b) => b.mtime - a.mtime);
-      return matches[0].path;
-    }
-  }
-
-  return findLatestDownloadedFile(mode, startedAt);
-}
-
-export function fetchMetadata(url) {
+function runYtDlpJson(args) {
   return new Promise((resolve, reject) => {
-    const process = spawn("yt-dlp", ["--dump-single-json", "--", url]);
+    const process = spawn("yt-dlp", args);
 
     let stdout = "";
     let stderr = "";
@@ -111,66 +25,84 @@ export function fetchMetadata(url) {
       }
 
       try {
-        const parsed = JSON.parse(stdout);
-        resolve(parsed);
+        resolve(JSON.parse(stdout));
       } catch {
-        reject(new Error("failed to parse yt-dlp metadata"));
+        reject(new Error("failed to parse yt-dlp output"));
       }
     });
   });
 }
 
+export function fetchMetadata(url) {
+  return runYtDlpJson(["--dump-single-json", "--", url]);
+}
+
+const MAX_PLAYLIST_ENTRIES = 50;
+
+export async function fetchPlaylistEntries(url) {
+  const data = await runYtDlpJson([
+    "--flat-playlist",
+    "--dump-single-json",
+    "--",
+    url,
+  ]);
+
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+
+  return entries
+    .map((entry) => {
+      if (entry.url && /^https?:\/\//.test(entry.url)) return entry.url;
+      if (entry.id) return `https://www.youtube.com/watch?v=${entry.id}`;
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, MAX_PLAYLIST_ENTRIES);
+}
+
 export function downloadMedia(url, mode = "video-mp4") {
   return new Promise((resolve, reject) => {
     const output = getOutputTemplate();
-    const startedAt = Date.now();
 
-    let args = [];
+    let modeArgs = [];
 
     if (mode === "audio-mp3") {
-      args = [
-        "-x",
-        "--audio-format",
-        "mp3",
-        "-o",
-        output,
-        "--write-info-json",
-        "--write-thumbnail",
-        "--embed-metadata",
-        "--",
-        url,
-      ];
+      modeArgs = ["-x", "--audio-format", "mp3"];
     } else if (mode === "audio-m4a") {
-      args = [
-        "-f",
-        "bestaudio[ext=m4a]/bestaudio",
-        "-o",
-        output,
-        "--write-info-json",
-        "--write-thumbnail",
-        "--embed-metadata",
-        "--",
-        url,
-      ];
+      modeArgs = ["-f", "bestaudio[ext=m4a]/bestaudio"];
     } else {
-      args = [
+      modeArgs = [
         "-f",
         "bv*[vcodec^=avc1][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
         "--merge-output-format",
         "mp4",
-        "-o",
-        output,
-        "--write-info-json",
-        "--write-thumbnail",
-        "--embed-metadata",
-        "--",
-        url,
       ];
     }
 
+    // --print reports yt-dlp's own final output path, so we never have to
+    // guess it by scanning the library for recently modified files.
+    const args = [
+      ...modeArgs,
+      "-o",
+      output,
+      "--write-info-json",
+      "--write-thumbnail",
+      "--embed-metadata",
+      "--print",
+      "after_move:filepath",
+      "--quiet",
+      "--no-warnings",
+      "--",
+      url,
+    ];
+
     const process = spawn("yt-dlp", args);
 
+    let stdout = "";
     let stderr = "";
+
+    process.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
 
     process.stderr.on("data", (data) => {
       stderr += data.toString();
@@ -182,7 +114,11 @@ export function downloadMedia(url, mode = "video-mp4") {
         return;
       }
 
-      const filePath = findDownloadedFile(url, mode, startedAt);
+      const filePath = stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .pop();
 
       if (!filePath || !fs.existsSync(filePath)) {
         reject(new Error("download completed but file could not be located"));

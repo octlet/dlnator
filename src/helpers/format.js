@@ -1,3 +1,15 @@
+const FORMAT_LABELS = {
+  "video-mp4": "mp4 video",
+  "audio-mp3": "mp3 audio",
+  "audio-m4a": "m4a audio",
+};
+
+export const FORMATS = Object.keys(FORMAT_LABELS);
+
+export function getFormatLabel(mode) {
+  return FORMAT_LABELS[mode] || mode;
+}
+
 export function formatDuration(seconds) {
   if (!seconds) return null;
 

@@ -4,7 +4,6 @@ import path from "path";
 export function getLibraryRoot() {
   const libraryRoot = path.join(
     /* turbopackIgnore: true */ process.cwd(),
-    "data",
     "library",
   );
 

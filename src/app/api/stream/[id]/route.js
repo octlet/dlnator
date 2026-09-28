@@ -7,10 +7,15 @@ export async function GET(req, context) {
   try {
     const { id } = await context.params;
     const jobId = Number(id);
+
+    if (!Number.isInteger(jobId)) {
+      return new NextResponse("invalid id", { status: 400 });
+    }
+
     const url = new URL(req.url);
     const mode = url.searchParams.get("mode");
 
-    const job = getJobById(jobId);
+    const job = await getJobById(jobId);
 
     if (!job) {
       return new NextResponse("file not found", { status: 404 });
@@ -28,7 +33,7 @@ export async function GET(req, context) {
     }
 
     if (!selected) {
-      selected = files.find((file) => file.media_kind === "video") || files[0];
+      selected = files.find((file) => file.mediaKind === "video") || files[0];
     }
 
     const filePath = selected?.path;

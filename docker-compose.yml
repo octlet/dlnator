@@ -1,9 +1,40 @@
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=dlnator
+      - POSTGRES_PASSWORD=dlnator
+      - POSTGRES_DB=dlnator
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dlnator"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   dlnator:
     build: .
-    container_name: dlnator
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data
+      - ./library:/app/library
+    environment:
+      - DATABASE_URL=postgresql://dlnator:dlnator@db:5432/dlnator
+      - AUTH_PASSWORD=${AUTH_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
+
+volumes:
+  db-data:

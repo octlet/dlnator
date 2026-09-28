@@ -1,7 +1,16 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import Sidebar from "@layouts/Sidebar";
 import MobileNav from "@layouts/MobileNav";
 
 export default function Shell({ children }) {
+  const pathname = usePathname();
+
+  if (pathname === "/login") {
+    return children;
+  }
+
   return (
     <div className="flex w-full">
       <Sidebar />

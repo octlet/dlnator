@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAllJobs } from "../../../helpers/jobs";
+import { getAllJobs, reapStuckJobs } from "../../../helpers/jobs";
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
 
-    let jobs = getAllJobs();
+    await reapStuckJobs();
+    let jobs = await getAllJobs();
 
     if (status) {
       jobs = jobs.filter((job) => job.status === status);

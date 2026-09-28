@@ -1,3 +1,4 @@
+import "plyr/dist/plyr.css";
 import "./globals.css";
 import Main from "@layouts/Main";
 import Shell from "@layouts/Shell";
@@ -17,6 +18,9 @@ export const metadata = {
   title: "dlnator",
   description:
     "a tool to download media from various sources and serve them locally with a web interface.",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 export default function RootLayout({ children }) {

@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Job {
+  id           Int      @id @default(autoincrement())
+  url          String
+  canonicalUrl String?  @map("canonical_url")
+  sourceKey    String?  @unique @map("source_key")
+
+  title        String?
+  extractor    String?
+  uploader     String?
+  duration     Int?
+  thumbnail    String?
+  webpageUrl   String?  @map("webpage_url")
+
+  status       String   @default("metadata")
+  error        String?
+  favorite     Boolean  @default(false)
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  files        File[]
+
+  @@map("jobs")
+}
+
+model File {
+  id        Int      @id @default(autoincrement())
+  mode      String
+  path      String
+  mediaKind String   @map("media_kind")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  jobId     Int      @map("job_id")
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, mode])
+  @@map("files")
+}
+
+model Setting {
+  id            Int    @id @default(1)
+  defaultFormat String @default("video-mp4") @map("default_format")
+
+  @@map("settings")
+}
